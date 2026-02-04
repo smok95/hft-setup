@@ -4,7 +4,6 @@
 
 1. **Run the main setup script** (requires root):
    ```bash
-   cd /tmp/claude-0/-root/86566e05-2b7e-468c-b366-b33eb9c25cc9/scratchpad
    chmod +x *.sh
    sudo ./setup-hft-optimization.sh
    ```
@@ -14,18 +13,36 @@
    sudo reboot
    ```
 
-3. **Verify the setup** after reboot:
+3. **Verify the setup** after reboot (also shows detected NICs and drivers):
    ```bash
    sudo ./verify-hft-setup.sh
    ```
 
-4. **Tune network interface** (optional but recommended):
+4. **Tune all network interfaces** with ethtool (run for every port, regardless of NIC type):
    ```bash
-   # Find your network interface name
-   ip addr
+   # Find your interface names and drivers
+   sudo ./verify-hft-setup.sh   # look at [Network Interfaces] section
+   # or: ip addr
 
-   # Run tuning script
-   sudo ./tune-network-interface.sh <interface_name>
+   # Tune each port (Mellanox and Intel alike)
+   sudo ./tune-network-interface.sh <mlx_port1>
+   sudo ./tune-network-interface.sh <mlx_port2>
+   sudo ./tune-network-interface.sh <x710_port1>
+   sudo ./tune-network-interface.sh <x710_port2>
+   ```
+
+5. **Install and configure VMA** (Mellanox/NVIDIA RDMA ports only):
+   ```bash
+   # Install VMA and dependencies
+   sudo ./install-vma.sh
+
+   # Configure VMA for the two Mellanox ports only.
+   # The script validates that both interfaces use an mlx driver
+   # and will reject non-RDMA NICs (e.g. Intel X710).
+   sudo ./configure-vma-dual-nic.sh <mlx_port1> <mlx_port2>
+
+   # Verify VMA installation
+   vma_stats -v
    ```
 
 ## What Gets Optimized
@@ -47,10 +64,64 @@
 - **TCP optimizations**: Disabled timestamps, SACK
 - **Backlog**: Increased to 300k packets
 - **Fast socket reuse**: Enabled
+- **rp_filter**: Disabled on all interfaces (asymmetric routes)
 
 ### 4. Interrupts
 - **IRQ affinity**: All IRQs pinned to CPUs 0-1
+- **irqbalance**: Disabled (would undo the pinning)
 - **Isolated from**: HFT application cores (2-7)
+
+## Mixed NIC Setup (Mellanox + Intel X710)
+
+If you have both Mellanox RDMA NICs and standard NICs (e.g. Intel X710), the
+correct split is:
+
+| NIC | Networking method | Setup |
+|---|---|---|
+| Mellanox ConnectX-4/5 (each port) | VMA kernel-bypass | `install-vma.sh` + `configure-vma-dual-nic.sh` |
+| Intel X710 (each port) | Kernel stack (ethtool-tuned) | `tune-network-interface.sh` only |
+
+- `tune-network-interface.sh` should still be run on the Mellanox ports as well;
+  it sets ring buffers and coalescing that VMA also benefits from.
+- `configure-vma-dual-nic.sh` validates that both passed interfaces use an `mlx`
+  driver and will exit with an error if you pass an X710 port.
+- Applications bind sockets to specific IPs; VMA intercepts only the sockets that
+  land on the Mellanox ports. Sockets bound to X710 addresses go through the
+  normal kernel stack automatically -- no special handling needed.
+
+## VMA (NVIDIA Messaging Accelerator)
+
+### What is VMA?
+VMA provides kernel-bypass networking for ultra-low latency:
+- **Bypass Linux network stack**: Direct hardware access via RDMA verbs
+- **Sub-microsecond latency**: ~2-5μs round-trip on ConnectX-4; 1-2μs on ConnectX-5+
+- **Zero-copy**: Data moves directly between NIC and application memory
+- **Transparent**: Uses LD_PRELOAD, no code changes required
+- **Driver**: Inbox `mlx5_ib` kernel module is sufficient; MLNX_OFED is optional
+
+### ConnectX-4 vs ConnectX-5+ Feature Differences
+| Feature | ConnectX-4 | ConnectX-5+ |
+|---|---|---|
+| VMA kernel-bypass | Yes | Yes |
+| Striding RQ (`VMA_STRQ`) | No | Yes |
+| Expected latency | ~2-5μs | ~1-2μs |
+
+The scripts have `VMA_STRQ=0` by default. If you upgrade to ConnectX-5 or newer,
+edit `/etc/libvma.conf` and set `VMA_STRQ=1` and `VMA_STRQ_STRIDES_NUM=2048`.
+
+### Running Applications with VMA
+```bash
+# Basic usage (VMA intercepts sockets on Mellanox ports automatically)
+run-with-vma.sh ./your-hft-app
+
+# With debug logging
+VMA_TRACELEVEL=3 run-with-vma.sh ./your-hft-app
+
+# Check VMA statistics
+vma_stats -p $(pgrep your-hft-app)
+```
+
+See `VMA-QUICK-REFERENCE.md` for comprehensive VMA usage guide.
 
 ## Running HFT Applications
 

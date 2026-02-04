@@ -22,13 +22,13 @@ echo "[2/7] Configuring HugePages..."
 echo 1024 > /proc/sys/vm/nr_hugepages
 echo "vm.nr_hugepages = 1024" >> /etc/sysctl.d/99-hft.conf
 
-# Add to /etc/security/limits.conf for hugepages
-if ! grep -q "memlock" /etc/security/limits.conf; then
+# Add memlock and rtprio limits for VMA and real-time scheduling
+if ! grep -q "HFT:" /etc/security/limits.conf; then
     cat >> /etc/security/limits.conf << EOF
-
-# HFT HugePages settings
-* soft memlock unlimited
-* hard memlock unlimited
+# HFT: VMA requires unlimited memlock for DMA buffers and HugePages
+*               -       memlock         unlimited
+# HFT: Allow real-time scheduling (chrt -f 99)
+*               -       rtprio          99
 EOF
 fi
 
@@ -36,7 +36,7 @@ fi
 echo "[3/7] Setting up CPU isolation..."
 GRUB_FILE="/etc/default/grub"
 if ! grep -q "isolcpus" $GRUB_FILE; then
-    sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 /' $GRUB_FILE
+    sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=0 processor.max_cstate=0 intel_pstate=disable /' $GRUB_FILE
     echo "  - Isolated CPUs 2-7 for HFT applications"
     echo "  - CPUs 0-1 reserved for OS/interrupts"
     grub2-mkconfig -o /boot/grub2/grub.cfg
@@ -60,6 +60,7 @@ Before=basic.target
 Type=oneshot
 ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
 ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+RemainAfterExit=yes
 
 [Install]
 WantedBy=basic.target
@@ -100,6 +101,7 @@ SERVICES_TO_DISABLE=(
     "cups"
     "avahi-daemon"
     "ModemManager"
+    "irqbalance"
 )
 
 for service in "${SERVICES_TO_DISABLE[@]}"; do
@@ -128,7 +130,9 @@ chmod +x /usr/local/bin/set-irq-affinity.sh
 cat > /etc/systemd/system/irq-affinity.service << EOF
 [Unit]
 Description=Set IRQ Affinity for HFT
-After=network.target
+After=network-online.target
+Wants=network-online.target
+Conflicts=irqbalance.service
 
 [Service]
 Type=oneshot

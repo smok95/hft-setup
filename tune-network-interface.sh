@@ -59,7 +59,7 @@ After=network.target
 Type=oneshot
 ExecStart=/usr/sbin/ethtool -G $IFACE rx 4096 tx 4096
 ExecStart=/usr/sbin/ethtool -K $IFACE gro off lro off tso off gso off
-ExecStart=/usr/sbin/ethtool -C $IFACE rx-usecs 0 tx-usecs 0
+ExecStart=-/usr/sbin/ethtool -C $IFACE rx-usecs 0 tx-usecs 0
 RemainAfterExit=yes
 
 [Install]
