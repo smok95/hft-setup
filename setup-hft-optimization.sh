@@ -36,7 +36,7 @@ fi
 echo "[3/7] Setting up CPU isolation..."
 GRUB_FILE="/etc/default/grub"
 if ! grep -q "isolcpus" $GRUB_FILE; then
-    sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=0 processor.max_cstate=0 intel_pstate=disable /' $GRUB_FILE
+    sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=0 processor.max_cstate=0 intel_pstate=active /' $GRUB_FILE
     echo "  - Isolated CPUs 2-7 for HFT applications"
     echo "  - CPUs 0-1 reserved for OS/interrupts"
     grub2-mkconfig -o /boot/grub2/grub.cfg
