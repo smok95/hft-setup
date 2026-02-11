@@ -12,13 +12,31 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# 1. Apply sysctl parameters
-echo "[1/7] Applying kernel parameters..."
+# 1. Disable SELinux
+echo "[1/8] Disabling SELinux..."
+if command -v getenforce &>/dev/null; then
+    CURRENT_SELINUX=$(getenforce)
+    if [ "$CURRENT_SELINUX" != "Disabled" ]; then
+        # Set to permissive immediately (no reboot needed)
+        setenforce 0
+        # Disable permanently
+        sed -i 's/^SELINUX=.*/SELINUX=disabled/' /etc/selinux/config
+        echo "  - SELinux: $CURRENT_SELINUX -> Disabled (permanent)"
+        REBOOT_REQUIRED=true
+    else
+        echo "  - SELinux already disabled"
+    fi
+else
+    echo "  - SELinux not installed, skipping"
+fi
+
+# 2. Apply sysctl parameters
+echo "[2/8] Applying kernel parameters..."
 cp hft-sysctl.conf /etc/sysctl.d/99-hft.conf
 sysctl -p /etc/sysctl.d/99-hft.conf
 
 # 2. Configure HugePages (2GB total, using 2MB pages = 1024 pages)
-echo "[2/7] Configuring HugePages..."
+echo "[3/8] Configuring HugePages..."
 echo 1024 > /proc/sys/vm/nr_hugepages
 echo "vm.nr_hugepages = 1024" >> /etc/sysctl.d/99-hft.conf
 
@@ -33,7 +51,7 @@ EOF
 fi
 
 # 3. CPU Isolation (isolate cores 2-7, leave 0-1 for OS)
-echo "[3/7] Setting up CPU isolation..."
+echo "[4/8] Setting up CPU isolation..."
 GRUB_FILE="/etc/default/grub"
 if ! grep -q "isolcpus" $GRUB_FILE; then
     sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=0 processor.max_cstate=0 intel_pstate=active /' $GRUB_FILE
@@ -44,7 +62,7 @@ if ! grep -q "isolcpus" $GRUB_FILE; then
 fi
 
 # 4. Disable transparent hugepages
-echo "[4/7] Disabling transparent hugepages..."
+echo "[5/8] Disabling transparent hugepages..."
 echo never > /sys/kernel/mm/transparent_hugepage/enabled
 echo never > /sys/kernel/mm/transparent_hugepage/defrag
 
@@ -69,7 +87,7 @@ systemctl daemon-reload
 systemctl enable disable-thp.service
 
 # 5. Set CPU governor to performance
-echo "[5/7] Setting CPU governor to performance..."
+echo "[6/8] Setting CPU governor to performance..."
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
     if [ -f "$cpu" ]; then
         echo performance > $cpu
@@ -94,7 +112,7 @@ systemctl daemon-reload
 systemctl enable cpu-performance.service
 
 # 6. Disable unnecessary services
-echo "[6/7] Disabling unnecessary services..."
+echo "[7/8] Disabling unnecessary services..."
 SERVICES_TO_DISABLE=(
     "firewalld"
     "bluetooth"
@@ -113,7 +131,7 @@ for service in "${SERVICES_TO_DISABLE[@]}"; do
 done
 
 # 7. IRQ Affinity (bind to CPUs 0-1)
-echo "[7/7] Configuring IRQ affinity..."
+echo "[8/8] Configuring IRQ affinity..."
 cat > /usr/local/bin/set-irq-affinity.sh << 'EOF'
 #!/bin/bash
 # Set IRQ affinity to CPUs 0-1 (leaving 2-7 for HFT apps)
@@ -150,6 +168,7 @@ echo ""
 echo "=== HFT Optimization Complete ==="
 echo ""
 echo "Configuration Summary:"
+echo "  - SELinux: Disabled"
 echo "  - Kernel parameters tuned for low latency"
 echo "  - HugePages: 2GB allocated (2MB pages)"
 echo "  - CPU Isolation: Cores 2-7 isolated for HFT apps"

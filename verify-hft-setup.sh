@@ -4,7 +4,21 @@
 echo "=== HFT Configuration Verification ==="
 echo ""
 
+# Check SELinux
+echo "[SELinux]"
+if command -v getenforce &>/dev/null; then
+    selinux_status=$(getenforce)
+    if [ "$selinux_status" = "Disabled" ]; then
+        echo "✓ SELinux: Disabled"
+    else
+        echo "⚠ SELinux: $selinux_status (should be 'Disabled')"
+    fi
+else
+    echo "✓ SELinux: not installed"
+fi
+
 # Check CPU isolation
+echo ""
 echo "[CPU Isolation]"
 if grep -q "isolcpus" /proc/cmdline; then
     echo "✓ CPU isolation active: $(grep -o 'isolcpus=[^ ]*' /proc/cmdline)"
