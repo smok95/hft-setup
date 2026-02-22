@@ -1,14 +1,13 @@
 #!/bin/bash
-# Configure VMA for Dual-NIC Setup
-# Usage: ./configure-vma-dual-nic.sh <nic1> <nic2>
+# Configure VMA for Multi-NIC Setup (supports 1 or more Mellanox/NVIDIA NICs)
+# Usage: ./configure-vma-dual-nic.sh <nic1> [nic2] [nic3] ...
 
-NIC1=$1
-NIC2=$2
+NICS=("$@")
 
-if [ -z "$NIC1" ] || [ -z "$NIC2" ]; then
-    echo "Usage: $0 <nic1> <nic2>"
+if [ ${#NICS[@]} -eq 0 ]; then
+    echo "Usage: $0 <nic1> [nic2] [nic3] ..."
     echo ""
-    echo "Both arguments must be Mellanox/NVIDIA RDMA-capable interfaces."
+    echo "All arguments must be Mellanox/NVIDIA RDMA-capable interfaces."
     echo "Intel X710 and other non-RDMA NICs should be tuned separately"
     echo "with tune-network-interface.sh instead."
     echo ""
@@ -20,8 +19,8 @@ if [ -z "$NIC1" ] || [ -z "$NIC2" ]; then
     exit 1
 fi
 
-# Validate that both NICs are Mellanox/NVIDIA RDMA NICs
-for NIC in $NIC1 $NIC2; do
+# Validate that all provided NICs are Mellanox/NVIDIA RDMA NICs
+for NIC in "${NICS[@]}"; do
     DRIVER=$(ethtool -i $NIC 2>/dev/null | grep driver | awk '{print $2}')
     if [[ "$DRIVER" != *"mlx"* ]]; then
         echo "Error: $NIC uses driver '$DRIVER', which is not a Mellanox/NVIDIA RDMA driver."
@@ -31,10 +30,18 @@ for NIC in $NIC1 $NIC2; do
     fi
 done
 
-echo "=== VMA Dual-NIC Configuration ==="
+NIC_COUNT=${#NICS[@]}
+echo "=== VMA Multi-NIC Configuration (${NIC_COUNT} NIC(s)) ==="
 echo ""
-echo "NIC 1: $NIC1"
-echo "NIC 2: $NIC2"
+
+# Build NIC comment block for the config header
+NIC_COMMENTS=""
+for i in "${!NICS[@]}"; do
+    NIC="${NICS[$i]}"
+    NIC_IP=$(ip addr show $NIC 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+    echo "NIC $((i+1)): $NIC (IP: ${NIC_IP:-Not configured})"
+    NIC_COMMENTS+="# NIC$((i+1)): $NIC (${NIC_IP:-unconfigured})"$'\n'
+done
 echo ""
 
 # Check if VMA is installed
@@ -43,19 +50,10 @@ if ! command -v vma_stats &> /dev/null; then
     exit 1
 fi
 
-# Get IPs and interface info
-NIC1_IP=$(ip addr show $NIC1 | grep "inet " | awk '{print $2}' | cut -d/ -f1)
-NIC2_IP=$(ip addr show $NIC2 | grep "inet " | awk '{print $2}' | cut -d/ -f1)
-
-echo "NIC 1 IP: ${NIC1_IP:-Not configured}"
-echo "NIC 2 IP: ${NIC2_IP:-Not configured}"
-echo ""
-
-# Create advanced VMA configuration for dual-NIC
+# Create advanced VMA configuration for multi-NIC
 cat > /etc/libvma.conf << EOF
-# VMA Configuration for Dual-NIC HFT Setup
-# NIC1: $NIC1 (${NIC1_IP:-unconfigured})
-# NIC2: $NIC2 (${NIC2_IP:-unconfigured})
+# VMA Configuration for Multi-NIC HFT Setup (${NIC_COUNT} NIC(s))
+${NIC_COMMENTS}
 
 # Enable VMA for all TCP/UDP traffic
 VMA_SPEC=tcp:*:*,udp:*:*
@@ -126,7 +124,7 @@ VMA_LOG_DETAILS=0
 VMA_GRO_STREAMS_MAX=0
 EOF
 
-echo "✓ Created /etc/libvma.conf with dual-NIC optimizations"
+echo "✓ Created /etc/libvma.conf with multi-NIC optimizations (${NIC_COUNT} NIC(s))"
 echo ""
 
 # Create helper script for running apps with VMA
@@ -240,8 +238,10 @@ echo "   systemctl enable vma-app@your-hft-app"
 echo "   systemctl start vma-app@your-hft-app"
 echo ""
 echo "Next steps:"
-echo "  1. Tune both NICs: ./tune-network-interface.sh $NIC1"
-echo "                     ./tune-network-interface.sh $NIC2"
+echo "  1. Tune all NICs:"
+for NIC in "${NICS[@]}"; do
+    echo "       ./tune-network-interface.sh $NIC"
+done
 echo "  2. Test VMA: vma_stats -v"
 echo "  3. Run your application with run-with-vma.sh"
 echo ""

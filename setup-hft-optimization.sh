@@ -52,12 +52,24 @@ fi
 
 # 3. CPU Isolation (isolate cores 2-7, leave 0-1 for OS)
 echo "[4/8] Setting up CPU isolation..."
+HFT_ARGS="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=0 processor.max_cstate=0 intel_pstate=active nosoftlockup skew_tick=1"
 GRUB_FILE="/etc/default/grub"
 if ! grep -q "isolcpus" $GRUB_FILE; then
-    sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=0 processor.max_cstate=0 intel_pstate=active /' $GRUB_FILE
+    sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="'"$HFT_ARGS"' /' $GRUB_FILE
     echo "  - Isolated CPUs 2-7 for HFT applications"
     echo "  - CPUs 0-1 reserved for OS/interrupts"
     grub2-mkconfig -o /boot/grub2/grub.cfg
+
+    # Rocky Linux 9 / RHEL 9 uses BLS (Boot Loader Specification).
+    # grub2-mkconfig updates grub.cfg but BLS entry files in
+    # /boot/loader/entries/ control the actual kernel cmdline.
+    # Use grubby to update BLS entries directly (DEFAULT kernel only,
+    # skip rescue entries).
+    if command -v grubby &>/dev/null; then
+        grubby --update-kernel=DEFAULT --args="$HFT_ARGS"
+        echo "  - BLS entry updated via grubby"
+    fi
+
     REBOOT_REQUIRED=true
 fi
 

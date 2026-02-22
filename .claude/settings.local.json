@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh:*)",
+      "Bash(ssh-copy-id:*)",
+      "Bash(rsync:*)",
+      "Bash(for:*)",
+      "Bash(do ssh -o ConnectTimeout=5 root@192.168.123.113 \"echo ''online''\")",
+      "Bash(break)",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(scp:*)",
+      "WebSearch",
+      "WebFetch(domain:memtest.org)",
+      "Bash(diskutil list:*)",
+      "Bash(diskutil unmountDisk:*)",
+      "Bash(sudo dd:*)",
+      "WebFetch(domain:www.mersenne.org)"
+    ]
+  }
+}

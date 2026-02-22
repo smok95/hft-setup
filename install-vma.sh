@@ -77,10 +77,15 @@ fi
 
 echo ""
 echo "[4/6] Installing libvma..."
-# Try to install from repository
-if dnf list libvma &>/dev/null; then
-    dnf install -y libvma libvma-devel libvma-utils
-    echo "  ✓ libvma installed from repository"
+# Try to install from repository (libvma-devel is not available in standard repos)
+VMA_PKGS=""
+dnf list libvma &>/dev/null      && VMA_PKGS="$VMA_PKGS libvma"
+dnf list libvma-utils &>/dev/null && VMA_PKGS="$VMA_PKGS libvma-utils"
+dnf list libvma-devel &>/dev/null && VMA_PKGS="$VMA_PKGS libvma-devel"
+
+if [ -n "$VMA_PKGS" ]; then
+    dnf install -y $VMA_PKGS
+    echo "  ✓ libvma installed from repository: $VMA_PKGS"
 else
     echo "  ⚠ libvma not found in repositories"
     echo "  Please download VMA from: https://github.com/Mellanox/libvma/releases"
