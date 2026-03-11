@@ -36,10 +36,10 @@
    # Install VMA and dependencies
    sudo ./install-vma.sh
 
-   # Configure VMA for the two Mellanox ports only.
-   # The script validates that both interfaces use an mlx driver
+   # Configure VMA for Mellanox ports (1 or more).
+   # The script validates that interfaces use an mlx driver
    # and will reject non-RDMA NICs (e.g. Intel X710).
-   sudo ./configure-vma-dual-nic.sh <mlx_port1> <mlx_port2>
+   sudo ./configure-vma-multi-nic.sh <mlx_port1> [<mlx_port2> ...]
 
    # Verify VMA installation
    vma_stats -v
@@ -78,12 +78,12 @@ correct split is:
 
 | NIC | Networking method | Setup |
 |---|---|---|
-| Mellanox ConnectX-4/5 (each port) | VMA kernel-bypass | `install-vma.sh` + `configure-vma-dual-nic.sh` |
+| Mellanox ConnectX-4/5 (each port) | VMA kernel-bypass | `install-vma.sh` + `configure-vma-multi-nic.sh` |
 | Intel X710 (each port) | Kernel stack (ethtool-tuned) | `tune-network-interface.sh` only |
 
 - `tune-network-interface.sh` should still be run on the Mellanox ports as well;
   it sets ring buffers and coalescing that VMA also benefits from.
-- `configure-vma-dual-nic.sh` validates that both passed interfaces use an `mlx`
+- `configure-vma-multi-nic.sh` validates that passed interfaces use an `mlx`
   driver and will exit with an error if you pass an X710 port.
 - Applications bind sockets to specific IPs; VMA intercepts only the sockets that
   land on the Mellanox ports. Sockets bound to X710 addresses go through the

@@ -27,7 +27,7 @@ sudo ./tune-network-interface.sh <x710_port2>
 sudo ./install-vma.sh
 
 # Configure VMA for the two Mellanox ports only (script validates mlx driver)
-sudo ./configure-vma-dual-nic.sh <mlx_port1> <mlx_port2>
+sudo ./configure-vma-multi-nic.sh <mlx_port1> [<mlx_port2> ...]
 ```
 
 ### Testing Scripts
@@ -90,7 +90,7 @@ vma_stats -p $(pgrep your-hft-app)
    - Creates initial `/etc/libvma.conf` with HFT-optimized settings
    - Configures kernel-bypass networking for ultra-low latency
 
-6. **configure-vma-dual-nic.sh** - Dual-NIC VMA configuration:
+6. **configure-vma-multi-nic.sh** - Multi-NIC VMA configuration:
    - Validates both interfaces use an mlx driver (rejects non-RDMA NICs like Intel X710)
    - Creates optimized `/etc/libvma.conf` for dual-NIC setup
    - Generates `/usr/local/bin/run-with-vma.sh` helper script
@@ -105,7 +105,7 @@ The setup creates these persistent services:
 - `cpu-performance.service` - Sets CPU governor to performance mode
 - `irq-affinity.service` - Runs `/usr/local/bin/set-irq-affinity.sh` to pin IRQs; conflicts irqbalance
 - `tune-nic-<interface>.service` - Applies NIC tuning on boot
-- `vma-app@.service` - Template for running HFT applications with VMA (created by configure-vma-dual-nic.sh)
+- `vma-app@.service` - Template for running HFT applications with VMA (created by configure-vma-multi-nic.sh)
 
 ### CPU Isolation Strategy
 
@@ -180,7 +180,7 @@ When modifying scripts:
 - `/etc/default/grub` - CPU isolation boot parameters
 - `/usr/local/bin/set-irq-affinity.sh` - IRQ affinity script
 - `/etc/security/limits.conf` - Memlock limits for HugePages
-- `/etc/libvma.conf` - VMA configuration (created by configure-vma-dual-nic.sh)
+- `/etc/libvma.conf` - VMA configuration (created by configure-vma-multi-nic.sh)
 - `/usr/local/bin/run-with-vma.sh` - Helper script to run apps with VMA
 - `/usr/lib64/libvma.so` or `/usr/lib/libvma.so` - VMA library for LD_PRELOAD
 - `/var/log/vma.log` - VMA runtime logs (if VMA_TRACELEVEL > 2)
@@ -194,5 +194,5 @@ When modifying scripts:
   - Mellanox/NVIDIA ConnectX-4+ for VMA kernel-bypass (RDMA-capable, driver `mlx4_en`/`mlx5_en`)
   - Intel X710 or other standard NICs tuned via ethtool only (driver `ixgbe`)
   - VMA requires RDMA-capable NICs; inbox `mlx5_ib` module is usually sufficient, MLNX_OFED is optional
-  - `configure-vma-dual-nic.sh` validates mlx driver and rejects non-RDMA interfaces
+  - `configure-vma-multi-nic.sh` validates mlx driver and rejects non-RDMA interfaces
   - `VMA_STRQ` (Striding RQ) requires ConnectX-5+; disabled by default for ConnectX-4

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Configure VMA for Multi-NIC Setup (supports 1 or more Mellanox/NVIDIA NICs)
-# Usage: ./configure-vma-dual-nic.sh <nic1> [nic2] [nic3] ...
+# Usage: ./configure-vma-multi-nic.sh <nic1> [nic2] [nic3] ...
 
 NICS=("$@")
 
@@ -127,8 +127,15 @@ EOF
 echo "✓ Created /etc/libvma.conf with multi-NIC optimizations (${NIC_COUNT} NIC(s))"
 echo ""
 
-# Create helper script for running apps with VMA
-cat > /usr/local/bin/run-with-vma.sh << 'EOF'
+# Install helper script for running apps with VMA
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/run-with-vma.sh" ]; then
+    cp "$SCRIPT_DIR/run-with-vma.sh" /usr/local/bin/run-with-vma.sh
+    chmod +x /usr/local/bin/run-with-vma.sh
+    echo "✓ Installed helper script: /usr/local/bin/run-with-vma.sh"
+else
+    echo "Warning: run-with-vma.sh not found in $SCRIPT_DIR, creating inline..."
+    cat > /usr/local/bin/run-with-vma.sh << 'EOF'
 #!/bin/bash
 # Helper script to run HFT applications with VMA
 
@@ -181,6 +188,7 @@ EOF
 
 chmod +x /usr/local/bin/run-with-vma.sh
 echo "✓ Created helper script: /usr/local/bin/run-with-vma.sh"
+fi
 echo ""
 
 # Create systemd service template for VMA apps
