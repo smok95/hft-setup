@@ -132,6 +132,7 @@ SERVICES_TO_DISABLE=(
     "avahi-daemon"
     "ModemManager"
     "irqbalance"
+    "dnf-makecache.timer"  # Prevents network timeouts on offline servers
 )
 
 for service in "${SERVICES_TO_DISABLE[@]}"; do
