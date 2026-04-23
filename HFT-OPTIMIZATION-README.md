@@ -193,7 +193,7 @@ cat /proc/buddyinfo
 ### Kernel Boot Parameters
 Manually edit `/etc/default/grub` and add:
 ```
-GRUB_CMDLINE_LINUX="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=0 processor.max_cstate=0 intel_pstate=disable"
+GRUB_CMDLINE_LINUX="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=0 processor.max_cstate=0 intel_pstate=active"
 ```
 
 Then run:

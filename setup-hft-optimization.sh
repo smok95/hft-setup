@@ -35,7 +35,7 @@ echo "[2/8] Applying kernel parameters..."
 cp hft-sysctl.conf /etc/sysctl.d/99-hft.conf
 sysctl -p /etc/sysctl.d/99-hft.conf
 
-# 2. Configure HugePages (2GB total, using 2MB pages = 1024 pages)
+# 3. Configure HugePages (2GB total, using 2MB pages = 1024 pages)
 echo "[3/8] Configuring HugePages..."
 echo 1024 > /proc/sys/vm/nr_hugepages
 echo "vm.nr_hugepages = 1024" >> /etc/sysctl.d/99-hft.conf

@@ -192,7 +192,7 @@ When modifying scripts:
 - **Cores**: 8-core system (0-7), but adaptable
 - **Network**: Mixed NIC setups are supported and common:
   - Mellanox/NVIDIA ConnectX-4+ for VMA kernel-bypass (RDMA-capable, driver `mlx4_en`/`mlx5_en`)
-  - Intel X710 or other standard NICs tuned via ethtool only (driver `ixgbe`)
+  - Intel X710 or other standard NICs tuned via ethtool only (driver `i40e`)
   - VMA requires RDMA-capable NICs; inbox `mlx5_ib` module is usually sufficient, MLNX_OFED is optional
   - `configure-vma-multi-nic.sh` validates mlx driver and rejects non-RDMA interfaces
   - `VMA_STRQ` (Striding RQ) requires ConnectX-5+; disabled by default for ConnectX-4

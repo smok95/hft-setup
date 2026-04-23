@@ -101,7 +101,7 @@ VMA_TCP_QUICKACK=1
 VMA_TCP_ABORT_ON_CLOSE=1
 
 # Zero-copy
-VMA_RX_BYTES_MIN=1
+VMA_RX_BYTES_MIN=65536
 VMA_TX_BUFS_BATCH_UDP=16
 VMA_TX_BUFS_BATCH_TCP=16
 
@@ -128,14 +128,7 @@ echo "✓ Created /etc/libvma.conf with multi-NIC optimizations (${NIC_COUNT} NI
 echo ""
 
 # Install helper script for running apps with VMA
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/run-with-vma.sh" ]; then
-    cp "$SCRIPT_DIR/run-with-vma.sh" /usr/local/bin/run-with-vma.sh
-    chmod +x /usr/local/bin/run-with-vma.sh
-    echo "✓ Installed helper script: /usr/local/bin/run-with-vma.sh"
-else
-    echo "Warning: run-with-vma.sh not found in $SCRIPT_DIR, creating inline..."
-    cat > /usr/local/bin/run-with-vma.sh << 'EOF'
+cat > /usr/local/bin/run-with-vma.sh << 'EOF'
 #!/bin/bash
 # Helper script to run HFT applications with VMA
 
@@ -188,7 +181,6 @@ EOF
 
 chmod +x /usr/local/bin/run-with-vma.sh
 echo "✓ Created helper script: /usr/local/bin/run-with-vma.sh"
-fi
 echo ""
 
 # Create systemd service template for VMA apps
