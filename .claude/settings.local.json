@@ -15,7 +15,25 @@
       "Bash(diskutil list:*)",
       "Bash(diskutil unmountDisk:*)",
       "Bash(sudo dd:*)",
-      "WebFetch(domain:www.mersenne.org)"
+      "WebFetch(domain:www.mersenne.org)",
+      "WebFetch(domain:docs.tavily.com)",
+      "Read(//root/.claude/**)",
+      "mcp__tavily__tavily_search",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "WebFetch(domain:github.com)",
+      "mcp__tavily__tavily_extract",
+      "Bash(bash -n /root/hft-setup/configure-vma-multi-nic.sh)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git config *)",
+      "Bash(git push *)",
+      "Bash(nmcli -f NAME,DEVICE,STATE,AUTOCONNECT connection show)",
+      "Bash(nmcli *)",
+      "Bash(rpm -qa)",
+      "WebFetch(domain:fedoraproject.org)",
+      "Bash(rpm *)",
+      "Bash(chmod +x *)",
+      "Bash(./prepare-server.sh *)"
     ]
   }
 }

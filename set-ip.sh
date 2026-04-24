@@ -86,9 +86,10 @@ CONN_NAME=$(nmcli -t -f NAME,DEVICE con show | grep ":${IFACE}$" | cut -d':' -f1
 if [ -z "$CONN_NAME" ]; then
     CONN_NAME="$IFACE"
     echo "[1/4] Creating new connection: $CONN_NAME"
-    nmcli con add type ethernet ifname "$IFACE" con-name "$CONN_NAME"
+    nmcli con add type ethernet ifname "$IFACE" con-name "$CONN_NAME" connection.autoconnect yes
 else
     echo "[1/4] Using existing connection: $CONN_NAME"
+    nmcli con mod "$CONN_NAME" connection.autoconnect yes
 fi
 
 # Configure IP address
