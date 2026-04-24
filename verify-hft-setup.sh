@@ -46,6 +46,59 @@ else
     echo "⚠ CPU governor: $gov (should be 'performance')"
 fi
 
+# Check intel_pstate mode (passive disables HWP for governor control)
+echo ""
+echo "[intel_pstate Mode]"
+pstate_status=$(cat /sys/devices/system/cpu/intel_pstate/status 2>/dev/null || echo "N/A")
+if [ "$pstate_status" = "passive" ]; then
+    echo "✓ intel_pstate: passive (HWP disabled, governor controls frequency)"
+elif [ "$pstate_status" = "active" ]; then
+    # Check Package-level HWP EPP (critical for 12th+ gen Intel CPUs)
+    if command -v x86_energy_perf_policy &>/dev/null; then
+        pkg_hwp_epp=$(x86_energy_perf_policy 2>/dev/null | grep "pkg0" | grep -oP 'epp \K[0-9]+')
+        if [ "$pkg_hwp_epp" = "0" ]; then
+            echo "✓ intel_pstate: active, Package HWP EPP=0 (performance mode)"
+        else
+            echo "⚠ intel_pstate: active, Package HWP EPP=$pkg_hwp_epp (should be 0)"
+            echo "  Fix: x86_energy_perf_policy --pkg 0 --hwp-epp 0 --force"
+        fi
+    else
+        echo "⚠ intel_pstate: active (HWP enabled, x86_energy_perf_policy not available)"
+        echo "  Install: dnf install x86_energy_perf_policy"
+    fi
+elif [ "$pstate_status" = "N/A" ]; then
+    echo "ℹ intel_pstate: not present (non-Intel CPU or acpi-cpufreq driver)"
+fi
+
+# Check frequency consistency (min_freq should equal max_freq for HFT)
+echo ""
+echo "[CPU Frequency Lock]"
+freq_issues=0
+for cpu_dir in /sys/devices/system/cpu/cpu*/cpufreq; do
+    if [ -d "$cpu_dir" ]; then
+        min_freq=$(cat "$cpu_dir/scaling_min_freq" 2>/dev/null)
+        max_freq=$(cat "$cpu_dir/scaling_max_freq" 2>/dev/null)
+        cpu_name=$(basename $(dirname "$cpu_dir"))
+        if [ "$min_freq" != "$max_freq" ]; then
+            echo "⚠ $cpu_name: min=$min_freq max=$max_freq (not locked)"
+            freq_issues=$((freq_issues + 1))
+        fi
+    fi
+done
+if [ "$freq_issues" -eq 0 ]; then
+    # Show sample locked frequency
+    sample_freq=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq 2>/dev/null)
+    if [ -n "$sample_freq" ]; then
+        freq_mhz=$((sample_freq / 1000))
+        echo "✓ All CPUs locked at $freq_mhz MHz (min_freq = max_freq)"
+    else
+        echo "ℹ No cpufreq driver present (frequency lock not applicable)"
+    fi
+else
+    echo "  ⚠ $freq_issues CPUs with unlocked frequency - will cause latency variance"
+    echo "  Fix: echo scaling_max_freq > scaling_min_freq for each CPU"
+fi
+
 # Check HugePages
 echo ""
 echo "[HugePages]"

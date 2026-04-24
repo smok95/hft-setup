@@ -52,6 +52,8 @@ fi
 
 # 3. CPU Isolation (isolate cores 2-7, leave 0-1 for OS)
 echo "[4/8] Setting up CPU isolation..."
+# intel_pstate=active enables HWP (Hardware P-state) for modern Intel CPUs
+# HWP EPP is set to 0 (performance) and min_freq locked to max_freq for consistent frequency
 HFT_ARGS="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=0 processor.max_cstate=0 intel_pstate=active nosoftlockup skew_tick=1"
 GRUB_FILE="/etc/default/grub"
 if ! grep -q "isolcpus" $GRUB_FILE; then
@@ -98,23 +100,51 @@ EOF
 systemctl daemon-reload
 systemctl enable disable-thp.service
 
-# 5. Set CPU governor to performance
-echo "[6/8] Setting CPU governor to performance..."
+# 5. Set CPU governor to performance and lock frequencies
+echo "[6/8] Setting CPU governor to performance and locking frequencies..."
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
     if [ -f "$cpu" ]; then
         echo performance > $cpu
     fi
 done
 
+# Lock min_freq = max_freq to prevent frequency scaling
+# Critical for HFT: all cores must run at max frequency consistently
+for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq; do
+    if [ -f "$cpu" ]; then
+        max_freq=$(cat "$cpu")
+        cpu_dir=$(dirname "$cpu")
+        min_freq_file="$cpu_dir/scaling_min_freq"
+        if [ -f "$min_freq_file" ]; then
+            echo "$max_freq" > "$min_freq_file"
+            echo "  - $(basename $cpu_dir): locked at $max_freq kHz"
+        fi
+    fi
+done
+
+# Set Package-level HWP EPP to performance (0)
+# Required for 12th+ gen Intel CPUs (Alder Lake, Raptor Lake) where HWP overrides governor
+if command -v x86_energy_perf_policy &>/dev/null; then
+    # Check if HWP is active (intel_pstate=active or no intel_pstate parameter)
+    pstate_status=$(cat /sys/devices/system/cpu/intel_pstate/status 2>/dev/null)
+    if [ "$pstate_status" = "active" ]; then
+        x86_energy_perf_policy --pkg 0 --hwp-epp 0 --force 2>/dev/null
+        echo "  - Package HWP EPP set to 0 (performance mode)"
+    fi
+fi
+
 # Make persistent
 cat > /etc/systemd/system/cpu-performance.service << EOF
 [Unit]
-Description=Set CPU Governor to Performance
+Description=Set CPU Governor to Performance and Lock Frequencies
 After=network.target
 
 [Service]
 Type=oneshot
 ExecStart=/bin/bash -c 'for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do [ -f \$cpu ] && echo performance > \$cpu; done'
+ExecStart=/bin/bash -c 'for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq; do [ -f \$cpu ] && cat \$cpu > \$(dirname \$cpu)/scaling_min_freq; done'
+# Set Package HWP EPP for 12th+ gen Intel CPUs (Alder Lake, Raptor Lake)
+ExecStart=/bin/bash -c 'command -v x86_energy_perf_policy >/dev/null && [ "\$(cat /sys/devices/system/cpu/intel_pstate/status 2>/dev/null)" = "active" ] && x86_energy_perf_policy --pkg 0 --hwp-epp 0 --force'
 RemainAfterExit=yes
 
 [Install]
