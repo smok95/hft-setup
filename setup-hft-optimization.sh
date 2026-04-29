@@ -52,9 +52,33 @@ fi
 
 # 3. CPU Isolation (isolate cores 2-7, leave 0-1 for OS)
 echo "[4/8] Setting up CPU isolation..."
-# intel_pstate=active enables HWP (Hardware P-state) for modern Intel CPUs
-# HWP EPP is set to 0 (performance) and min_freq locked to max_freq for consistent frequency
-HFT_ARGS="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=0 processor.max_cstate=0 intel_pstate=active nosoftlockup skew_tick=1"
+# CPU generation detection for proper intel_pstate mode
+# 12th+ gen Intel (Alder Lake, model 0xB7, stepping 1) requires intel_pstate=passive on older kernels
+# kernel 5.14 doesn't fully support Alder Lake HWP, so use passive mode
+CPU_FAMILY=$(cat /proc/cpuinfo | grep "cpu family" | head -1 | awk '{print $3}')
+CPU_MODEL=$(cat /proc/cpuinfo | grep "model" | head -1 | awk '{print $3}')
+# Alder Lake: family 6, model 0xB7 (183), stepping 1
+# Raptor Lake: family 6, model 0xB7 (183), stepping 2-4 or model 0xBA (186)
+# Sapphire Rapids: family 6, model 0x8F (143)
+IS_12TH_GEN=false
+if [ "$CPU_FAMILY" = "6" ]; then
+    case "$CPU_MODEL" in
+        183|186|143) IS_12TH_GEN=true ;;
+    esac
+fi
+
+if [ "$IS_12TH_GEN" = "true" ]; then
+    # 12th+ gen Intel: use passive mode (allows acpi-cpufreq fallback if intel_pstate unsupported)
+    PSTATE_MODE="passive"
+    echo "  - Detected 12th+ gen Intel CPU (model $CPU_MODEL), using intel_pstate=passive"
+else
+    PSTATE_MODE="active"
+    echo "  - Using intel_pstate=active for HWP support"
+fi
+
+# msr.allow_writes=1: Enable MSR writes for C1E/HWP control (required for HFT MSR tuning)
+# idle=poll removed: allows OS dynamic control of C-states via BIOS enabled settings
+HFT_ARGS="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 intel_idle.max_cstate=1 processor.max_cstate=1 intel_pstate=$PSTATE_MODE nosoftlockup skew_tick=1 msr.allow_writes=1"
 GRUB_FILE="/etc/default/grub"
 if ! grep -q "isolcpus" $GRUB_FILE; then
     sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="'"$HFT_ARGS"' /' $GRUB_FILE
@@ -124,16 +148,41 @@ done
 
 # Set Package-level HWP EPP to performance (0)
 # Required for 12th+ gen Intel CPUs (Alder Lake, Raptor Lake) where HWP overrides governor
+# Works only when intel_pstate=active and HWP is available
 if command -v x86_energy_perf_policy &>/dev/null; then
-    # Check if HWP is active (intel_pstate=active or no intel_pstate parameter)
     pstate_status=$(cat /sys/devices/system/cpu/intel_pstate/status 2>/dev/null)
     if [ "$pstate_status" = "active" ]; then
         x86_energy_perf_policy --pkg 0 --hwp-epp 0 --force 2>/dev/null
         echo "  - Package HWP EPP set to 0 (performance mode)"
+    else
+        # intel_pstate=passive or unsupported: governor-based control works
+        echo "  - intel_pstate mode: $pstate_status (governor-based frequency control)"
     fi
 fi
 
 # Make persistent
+cat > /usr/local/bin/disable-c1e-msr.sh << 'EOFMSR'
+#!/bin/bash
+# Disable C1E auto-promotion via MSR 0x1FC
+# This prevents CPU from dropping to C1E state during idle periods
+# For HFT: bit 0 = 0 disables C1E auto-promotion
+if [ -e /dev/cpu/0/msr ] && command -v rdmsr >/dev/null && command -v wrmsr >/dev/null; then
+    # Read current MSR 0x1FC value and clear bit 0
+    for cpu in $(ls /dev/cpu/ | grep -E '^[0-9]+$'); do
+        val=$(rdmsr -p $cpu 0x1fc 2>/dev/null)
+        if [ -n "$val" ]; then
+            # Convert hex to decimal, clear bit 0, convert back to hex
+            val_dec=$(printf "%d" "0x$val")
+            new_dec=$((val_dec & 0xFFFFFFFFFFFFFFFE))
+            new_hex=$(printf "%x" $new_dec)
+            wrmsr -p $cpu 0x1fc $new_hex 2>/dev/null || true
+        fi
+    done
+    echo "MSR 0x1FC C1E auto-promotion disabled on all CPUs"
+fi
+EOFMSR
+chmod +x /usr/local/bin/disable-c1e-msr.sh
+
 cat > /etc/systemd/system/cpu-performance.service << EOF
 [Unit]
 Description=Set CPU Governor to Performance and Lock Frequencies
@@ -141,10 +190,14 @@ After=network.target
 
 [Service]
 Type=oneshot
+# Set performance governor (works with acpi-cpufreq or intel_pstate=passive)
 ExecStart=/bin/bash -c 'for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do [ -f \$cpu ] && echo performance > \$cpu; done'
+# Lock min_freq = max_freq to prevent frequency scaling
 ExecStart=/bin/bash -c 'for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq; do [ -f \$cpu ] && cat \$cpu > \$(dirname \$cpu)/scaling_min_freq; done'
-# Set Package HWP EPP for 12th+ gen Intel CPUs (Alder Lake, Raptor Lake)
+# Set Package HWP EPP for 12th+ gen Intel CPUs (only when intel_pstate=active)
 ExecStart=/bin/bash -c 'command -v x86_energy_perf_policy >/dev/null && [ "\$(cat /sys/devices/system/cpu/intel_pstate/status 2>/dev/null)" = "active" ] && x86_energy_perf_policy --pkg 0 --hwp-epp 0 --force'
+# Disable C1E auto-promotion via MSR 0x1FC (requires msr.allow_writes=1 kernel param)
+ExecStart=/usr/local/bin/disable-c1e-msr.sh
 RemainAfterExit=yes
 
 [Install]
